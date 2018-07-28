@@ -37,11 +37,16 @@ export class RouterView {
 
   created(owningView) {
     this.owningView = owningView;
+    let resolve, reject;
+    this._whenBound = new Promise((res, rej) => { resolve = res; reject = rej; });
+    this._whenBound.resolve = resolve;
+    this._whenBound.reject = reject; // TODO: discuss to reject on timeout ??
   }
 
   bind(bindingContext, overrideContext) {
     this.container.viewModel = bindingContext;
     this.overrideContext = overrideContext;
+    this._whenBound.resolve();
   }
 
   process(viewPortInstruction, waitToSwap) {
@@ -130,7 +135,9 @@ export class RouterView {
         layoutInstruction.viewModel = {};
       }
 
-      return this.compositionEngine.createController(layoutInstruction).then(controller => {
+      return this.compositionEngine.createController(layoutInstruction)
+      .then(controller => this._whenBound.then(() => controller))
+      .then(controller => {
         ShadowDOM.distributeView(viewPortInstruction.controller.view, controller.slots || controller.view.slots);
         controller.automate(createOverrideContext(layoutInstruction.viewModel), this.owningView);
         controller.view.children.push(viewPortInstruction.controller.view);
@@ -143,7 +150,7 @@ export class RouterView {
 
     this.view = viewPortInstruction.controller.view;
 
-    return ready(this.owningView);
+    return this._whenBound.then(() => ready(this.owningView));
   }
 
   _notify() {
